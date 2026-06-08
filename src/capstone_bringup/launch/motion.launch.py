@@ -24,7 +24,7 @@ def generate_launch_description():
     return LaunchDescription([
         # --- Frequently changed at runtime (CLI override) ---
         DeclareLaunchArgument('target_class', default_value='laptop'),
-        DeclareLaunchArgument('model_path', default_value='models/yolov8s.pt'),
+        DeclareLaunchArgument('model_path', default_value='models/yolov8n.pt'),
         DeclareLaunchArgument('confidence_threshold', default_value='0.40'),
         DeclareLaunchArgument('process_every_n_frames', default_value='3'),
         DeclareLaunchArgument('linear_speed', default_value='0.18'),

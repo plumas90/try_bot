@@ -398,7 +398,22 @@ class YoloLidarMissionNode(Node):
         cv2.putText(debug_frame, f'STEP {self.target_index + 1}/{len(self.sequence)}', (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         return True, float(offset_x), label, float(conf), float(width_ratio), float(area_ratio), debug_frame
 
+    def _get_paper_contours_hsv(self, frame):
+        # Primary: HSV white detection — best for finding white paper against any background
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        # Wide white range: low saturation, high brightness
+        mask = cv2.inRange(hsv, (0, 0, 120), (180, 100, 255))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        return list(contours)
+
     def _get_paper_contours_adaptive(self, frame):
+        # Fallback: adaptive threshold intersected with white HSV mask
+        # Prevents laptop keys/screen edges from being detected as paper
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        white_mask = cv2.inRange(hsv, (0, 0, 100), (180, 120, 255))
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         binary = cv2.adaptiveThreshold(
@@ -407,27 +422,19 @@ class YoloLidarMissionNode(Node):
             cv2.THRESH_BINARY,
             blockSize=15, C=4,
         )
+        combined = cv2.bitwise_and(binary, white_mask)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel, iterations=2)
+        contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         return [c for c in contours if cv2.contourArea(c) > 500]
-
-    def _get_paper_contours_hsv(self, frame):
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, (0, 0, 140), (180, 85, 255))
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        return list(contours)
 
     def find_paper(self, frame):
         height, width = frame.shape[:2]
         image_area = float(width * height)
         image_center_x = width / 2.0
-        contours = self._get_paper_contours_adaptive(frame)
+        contours = self._get_paper_contours_hsv(frame)
         if not contours:
-            contours = self._get_paper_contours_hsv(frame)
+            contours = self._get_paper_contours_adaptive(frame)
 
         best = None
         best_score = 0.0
