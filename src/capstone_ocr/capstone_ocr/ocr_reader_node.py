@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-import re
+import difflib
 import time
-from difflib import SequenceMatcher
 
 import cv2
 import numpy as np
@@ -13,9 +12,13 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, String
 
 try:
-    import pytesseract
-except Exception:
-    pytesseract = None
+    import easyocr
+except ImportError:
+    easyocr = None
+
+
+KNOWN_TARGETS = ['CHAIR', 'BACKPACK', 'LAPTOP', 'NOTEBOOK', 'HOME']
+CANONICAL = {'NOTEBOOK': 'LAPTOP'}
 
 
 class OcrReaderNode(Node):
@@ -24,110 +27,95 @@ class OcrReaderNode(Node):
 
         self.declare_parameter('image_topic', '/image_raw')
         self.declare_parameter('debug_image_topic', '/ocr_debug_image')
-        self.declare_parameter('ocr_interval_sec', 0.7)
+        self.declare_parameter('ocr_interval_sec', 0.5)
 
-        self.image_topic = self.get_parameter('image_topic').value
-        self.debug_topic = self.get_parameter('debug_image_topic').value
+        image_topic = self.get_parameter('image_topic').value
+        debug_topic = self.get_parameter('debug_image_topic').value
         self.ocr_interval = float(self.get_parameter('ocr_interval_sec').value)
 
         self.bridge = CvBridge()
         self.enabled = False
         self.last_ocr_time = 0.0
         self.last_result = ''
+        self._prev_result = ''  # for consecutive-confirmation
+
+        if easyocr is None:
+            self.get_logger().error('easyocr not installed. Run: pip install easyocr')
+            self.reader = None
+        else:
+            self.get_logger().info('Loading EasyOCR (English, GPU)...')
+            self.reader = easyocr.Reader(['en'], gpu=True)
+            # warm-up
+            dummy = np.zeros((64, 256, 3), dtype=np.uint8)
+            self.reader.readtext(dummy)
+            self.get_logger().info('EasyOCR ready.')
 
         self.create_subscription(Bool, '/mission/ocr_enable', self.enable_cb, 10)
-        self.create_subscription(Image, self.image_topic, self.image_cb, 10)
-
+        self.create_subscription(Image, image_topic, self.image_cb, 10)
         self.text_pub = self.create_publisher(String, '/mission/ocr_text', 10)
-        self.debug_pub = self.create_publisher(Image, self.debug_topic, 10)
-
-        if pytesseract is None:
-            self.get_logger().error(
-                'pytesseract is missing. OCR node will run, but cannot read text.'
-            )
-        else:
-            self.get_logger().info('OCR reader ready.')
+        self.debug_pub = self.create_publisher(Image, debug_topic, 10)
 
     def enable_cb(self, msg):
         next_enabled = bool(msg.data)
         if next_enabled == self.enabled:
             return
-
         self.enabled = next_enabled
-
         if self.enabled:
             self.last_result = ''
+            self._prev_result = ''
             self.get_logger().info('OCR ENABLED')
         else:
             self.get_logger().info('OCR DISABLED')
 
-    def normalize_text(self, raw):
-        text = raw.upper()
-        text = re.sub(r'[^A-Z]', '', text)
+    def normalize_text(self, raw: str) -> str:
+        """Normalize raw OCR output to a canonical target name or empty string."""
+        text = raw.upper().strip()
+        alpha = ''.join(c for c in text if c.isalpha())
 
-        words = ['CHAIR', 'BACKPACK', 'LAPTOP', 'NOTEBOOK', 'HOME']
+        if len(alpha) < 3:
+            return ''
 
-        for w in words:
-            if w in text:
-                return 'LAPTOP' if w == 'NOTEBOOK' else w
+        if alpha in KNOWN_TARGETS:
+            return CANONICAL.get(alpha, alpha)
 
-        best_word = ''
-        best_score = 0.0
-
-        for w in words:
-            score = SequenceMatcher(None, text, w).ratio()
-            if score > best_score:
-                best_score = score
-                best_word = w
-
-        if best_score >= 0.55:
-            return 'LAPTOP' if best_word == 'NOTEBOOK' else best_word
+        matches = difflib.get_close_matches(alpha, KNOWN_TARGETS, n=1, cutoff=0.6)
+        if matches:
+            return CANONICAL.get(matches[0], matches[0])
 
         return ''
 
     def find_paper_roi(self, frame):
+        """Find white paper region using adaptive threshold, fallback to center crop."""
         h, w = frame.shape[:2]
-
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-        # White paper: low saturation, high brightness.
-        mask = cv2.inRange(hsv, (0, 0, 130), (180, 80, 255))
-
-        kernel = np.ones((5, 5), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-
-        contours, _ = cv2.findContours(
-            mask,
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE,
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        binary = cv2.adaptiveThreshold(
+            blurred, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            blockSize=15, C=4,
         )
+        kernel = np.ones((3, 3), np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         best = None
         best_area = 0
-
         for c in contours:
             area = cv2.contourArea(c)
-
             if area < float(w * h) * 0.015:
                 continue
-
             x, y, bw, bh = cv2.boundingRect(c)
-
             if bw <= 0 or bh <= 0:
                 continue
-
             ratio = bw / float(bh)
-
-            # A4 landscape or cropped sign-like paper.
             if ratio < 1.0 or ratio > 3.5:
                 continue
-
             if area > best_area:
                 best_area = area
                 best = (x, y, bw, bh)
 
         if best is None:
-            # fallback: center crop
             x = int(w * 0.15)
             y = int(h * 0.25)
             bw = int(w * 0.70)
@@ -135,61 +123,42 @@ class OcrReaderNode(Node):
             return frame[y:y + bh, x:x + bw], (x, y, bw, bh), False
 
         x, y, bw, bh = best
-
         pad_x = int(bw * 0.05)
         pad_y = int(bh * 0.08)
-
         x1 = max(0, x - pad_x)
         y1 = max(0, y - pad_y)
         x2 = min(w, x + bw + pad_x)
         y2 = min(h, y + bh + pad_y)
-
         return frame[y1:y2, x1:x2], (x1, y1, x2 - x1, y2 - y1), True
 
     def preprocess_for_ocr(self, roi):
+        """Sharpen and enhance contrast for better OCR input."""
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (3, 3), 0)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
+        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+        gray = cv2.filter2D(gray, -1, kernel)
+        gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        return gray
 
-        # black letters on white paper
-        _, binary = cv2.threshold(
-            gray,
-            0,
-            255,
-            cv2.THRESH_BINARY + cv2.THRESH_OTSU,
-        )
-
-        scale = 3
-        binary = cv2.resize(
-            binary,
-            None,
-            fx=scale,
-            fy=scale,
-            interpolation=cv2.INTER_CUBIC,
-        )
-
-        return binary
-
-    def run_ocr(self, binary):
-        if pytesseract is None:
+    def run_ocr(self, preprocessed) -> str:
+        if self.reader is None:
             return ''
-
-        config = (
-            '--psm 6 '
-            '-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        )
-
-        raw = pytesseract.image_to_string(binary, config=config)
-        return self.normalize_text(raw)
+        results = self.reader.readtext(preprocessed, detail=1)
+        for (_bbox, text, conf) in results:
+            if conf < 0.3:
+                continue
+            normalized = self.normalize_text(text)
+            if normalized:
+                return normalized
+        return ''
 
     def image_cb(self, msg):
         if not self.enabled:
             return
-
         now = time.time()
-
         if now - self.last_ocr_time < self.ocr_interval:
             return
-
         self.last_ocr_time = now
 
         try:
@@ -199,40 +168,34 @@ class OcrReaderNode(Node):
             return
 
         roi, rect, paper_found = self.find_paper_roi(frame)
-        binary = self.preprocess_for_ocr(roi)
-        result = self.run_ocr(binary)
+        preprocessed = self.preprocess_for_ocr(roi)
+        result = self.run_ocr(preprocessed)
 
         x, y, w, h = rect
-
         color = (0, 255, 0) if paper_found else (0, 165, 255)
         cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-
         show = result if result else 'OCR...'
-        cv2.putText(
-            frame,
-            show,
-            (20, 45),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.1,
-            (0, 255, 255),
-            3,
-        )
+        cv2.putText(frame, show, (20, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 255, 255), 3)
 
         out = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
         self.debug_pub.publish(out)
 
         if result:
-            self.last_result = result
-            self.text_pub.publish(String(data=result))
-            self.get_logger().info(f'OCR RESULT: {result}')
+            if result == self._prev_result:
+                self.last_result = result
+                self.text_pub.publish(String(data=result))
+                self.get_logger().info(f'OCR RESULT (confirmed): {result}')
+            else:
+                self._prev_result = result
+                self.get_logger().info(f'OCR candidate (waiting for confirm): {result}')
         else:
+            self._prev_result = ''
             self.get_logger().info('OCR scanning...', throttle_duration_sec=1.0)
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = OcrReaderNode()
-
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
