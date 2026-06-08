@@ -682,6 +682,11 @@ class YoloLidarMissionNode(Node):
         return self.target_ever_found and (now - self.last_target_time <= memory_sec)
 
     def is_front_too_close(self):
+        # Vision-first: box filling >90% of frame = dangerously close
+        box_width = max(self.target_box_width_ratio, self.locked_box_width_ratio)
+        if box_width >= 0.90:
+            return True
+        # LiDAR as secondary check only when data is available
         dist = float(self.get_parameter('obstacle_stop_distance').value)
         return self.front_distance is not None and self.front_distance <= dist
 
@@ -690,13 +695,17 @@ class YoloLidarMissionNode(Node):
         return self.front_distance is not None and self.front_distance <= dist
 
     def is_object_front_reached(self):
-        dist = float(self.get_parameter('object_front_distance').value)
-        min_width_ratio = float(self.get_parameter('object_front_min_box_width_ratio').value)
+        # Vision-primary: stop based on bounding box size
         width_ratio = self.object_close_box_width_threshold()
         box_width = max(self.target_box_width_ratio, self.locked_box_width_ratio)
+        if box_width >= width_ratio:
+            return True
+        # LiDAR as secondary when available
+        dist = float(self.get_parameter('object_front_distance').value)
+        min_width_ratio = float(self.get_parameter('object_front_min_box_width_ratio').value)
         if self.front_distance is not None and self.front_distance <= dist and box_width >= min_width_ratio:
             return True
-        return box_width >= width_ratio
+        return False
 
     def object_close_box_width_threshold(self):
         if self.active_target_name() == 'laptop':
@@ -777,10 +786,6 @@ class YoloLidarMissionNode(Node):
             self.publish_cmd(cmd, f'APPROACH_OBJECT_FRONT: target={target}, offset={self.target_offset_x:.3f}, box_w={self.target_box_width_ratio:.3f}, front={self.front_text()}, paper_seen={self.paper_found}, v={cmd.linear.x:.3f}, w={cmd.angular.z:.3f}')
             return
 
-        # Safety: if LiDAR has no data while approaching blind, stop — object may be above scan plane
-        if self.front_distance is None:
-            self.publish_stop(f'APPROACH_LOCKED_BLIND_STOP: no lidar data, target={target}')
-            return
         cmd.linear.x = float(self.get_parameter('locked_blind_forward_speed').value)
         cmd.angular.z = self.compute_turn_for_offset(self.locked_offset_x) * 0.7
         age = time.time() - self.locked_last_seen_time if self.locked_last_seen_time else 0.0
