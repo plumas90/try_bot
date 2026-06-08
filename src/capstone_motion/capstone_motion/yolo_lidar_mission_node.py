@@ -777,6 +777,10 @@ class YoloLidarMissionNode(Node):
             self.publish_cmd(cmd, f'APPROACH_OBJECT_FRONT: target={target}, offset={self.target_offset_x:.3f}, box_w={self.target_box_width_ratio:.3f}, front={self.front_text()}, paper_seen={self.paper_found}, v={cmd.linear.x:.3f}, w={cmd.angular.z:.3f}')
             return
 
+        # Safety: if LiDAR has no data while approaching blind, stop — object may be above scan plane
+        if self.front_distance is None:
+            self.publish_stop(f'APPROACH_LOCKED_BLIND_STOP: no lidar data, target={target}')
+            return
         cmd.linear.x = float(self.get_parameter('locked_blind_forward_speed').value)
         cmd.angular.z = self.compute_turn_for_offset(self.locked_offset_x) * 0.7
         age = time.time() - self.locked_last_seen_time if self.locked_last_seen_time else 0.0

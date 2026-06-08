@@ -14,6 +14,7 @@
     # Movement
     linear_speed: 0.18
     stop_distance: 0.55
+    obstacle_stop_distance: 0.35
 
     # OCR
     ocr_timeout_sec: 15.0
