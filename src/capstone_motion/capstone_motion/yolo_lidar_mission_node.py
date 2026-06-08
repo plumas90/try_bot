@@ -45,6 +45,7 @@ class YoloLidarMissionNode(Node):
         self.declare_parameter('ocr_timeout_sec', 8.0)
         self.declare_parameter('home_marker_ocr_timeout_sec', 10.0)
         self.declare_parameter('max_mission_targets', 10)
+        self.declare_parameter('search_timeout_sec', 60.0)
         self.declare_parameter('allowed_target_classes', 'chair,laptop,backpack')
         self.declare_parameter('label_aliases', 'suitcase:backpack,handbag:backpack,couch:chair,dining table:chair')
         self.declare_parameter('initial_forward_sec', 0.0)
@@ -606,7 +607,8 @@ class YoloLidarMissionNode(Node):
         now = time.time()
         if self.state == 'DONE':
             self.publish_stop('DONE: mission complete')
-            return
+            self.get_logger().info('Mission finished — shutting down node.')
+            raise SystemExit
 
         if self.state == 'INITIAL_FORWARD':
             self.control_initial_forward(now)
@@ -646,6 +648,12 @@ class YoloLidarMissionNode(Node):
         if self.target_found:
             self.lock_current_target()
             self.control_locked_target()
+            return
+        # Search timeout: give up and return home if target not found within limit
+        search_timeout = float(self.get_parameter('search_timeout_sec').value)
+        if search_timeout > 0 and (now - self.state_started_at) > search_timeout:
+            self.get_logger().warn(f'SEARCH_TIMEOUT: {self.current_target()} not found after {search_timeout:.0f}s — returning home')
+            self.start_return_home()
             return
         self.control_search()
 
