@@ -9,6 +9,7 @@
 
     # YOLO
     confidence_threshold: 0.30
+    confidence_threshold_track: 0.15
     process_every_n_frames: 5
 
     # Movement

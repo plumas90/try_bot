@@ -54,6 +54,7 @@ class YoloLidarMissionNode(Node):
         self.declare_parameter('initial_spin_360_sec', 18.0)
 
         self.declare_parameter('confidence_threshold', 0.40)
+        self.declare_parameter('confidence_threshold_track', 0.15)
         self.declare_parameter('process_every_n_frames', 3)
 
         self.declare_parameter('stop_distance', 0.55)
@@ -347,7 +348,11 @@ class YoloLidarMissionNode(Node):
 
     def detect_target(self, frame):
         target_class = self.active_target_name()
-        conf_threshold = float(self.get_parameter('confidence_threshold').value)
+        # Use lower tracking threshold when already locked to prevent losing target mid-approach
+        if self.target_locked:
+            conf_threshold = float(self.get_parameter('confidence_threshold_track').value)
+        else:
+            conf_threshold = float(self.get_parameter('confidence_threshold').value)
         h, w = frame.shape[:2]
         image_center_x = w / 2.0
         debug_frame = frame.copy()
