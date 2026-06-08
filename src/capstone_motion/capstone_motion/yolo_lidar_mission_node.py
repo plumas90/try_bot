@@ -52,8 +52,8 @@ class YoloLidarMissionNode(Node):
         self.declare_parameter('initial_emergency_stop_distance', 0.10)
         self.declare_parameter('initial_spin_360_sec', 18.0)
 
-        self.declare_parameter('confidence_threshold', 0.08)
-        self.declare_parameter('process_every_n_frames', 1)
+        self.declare_parameter('confidence_threshold', 0.40)
+        self.declare_parameter('process_every_n_frames', 3)
 
         self.declare_parameter('stop_distance', 0.55)
         self.declare_parameter('obstacle_stop_distance', 0.20)
@@ -295,7 +295,13 @@ class YoloLidarMissionNode(Node):
             checked = ', '.join(str(p) for p in candidates)
             self.get_logger().error(f'Model file not found. Checked: {checked}')
             return None
-        return YOLO(str(model_path))
+        model = YOLO(str(model_path))
+        try:
+            model.to('cuda')
+            self.get_logger().info('YOLO running on CUDA')
+        except Exception as e:
+            self.get_logger().warn(f'CUDA unavailable, using CPU: {e}')
+        return model
 
     def image_cb(self, msg):
         self.last_image_time = time.time()
@@ -352,7 +358,7 @@ class YoloLidarMissionNode(Node):
             cv2.putText(debug_frame, f'MISSION {self.state}', (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
             return False, 0.0, '', 0.0, 0.0, 0.0, debug_frame
 
-        result = self.model(frame, verbose=False)[0]
+        result = self.model(frame, verbose=False, iou=0.45)[0]
         for box in result.boxes:
             cls_id = int(box.cls[0])
             raw_label = self.model.names[cls_id].lower()

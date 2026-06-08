@@ -28,7 +28,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_topic', default_value='/cmd_vel'),
         DeclareLaunchArgument('allow_blind_search_rotation', default_value='true'),
 
-        DeclareLaunchArgument('confidence_threshold', default_value='0.08'),
+        DeclareLaunchArgument('confidence_threshold', default_value='0.40'),
+        DeclareLaunchArgument('process_every_n_frames', default_value='3'),
         DeclareLaunchArgument('stop_distance', default_value='0.55'),
         DeclareLaunchArgument('obstacle_stop_distance', default_value='0.20'),
         DeclareLaunchArgument('front_angle_deg', default_value='18.0'),
@@ -108,6 +109,7 @@ def generate_launch_description():
                 'cmd_vel_topic': LaunchConfiguration('cmd_vel_topic'),
                 'allow_blind_search_rotation': LaunchConfiguration('allow_blind_search_rotation'),
                 'confidence_threshold': LaunchConfiguration('confidence_threshold'),
+                'process_every_n_frames': LaunchConfiguration('process_every_n_frames'),
                 'stop_distance': LaunchConfiguration('stop_distance'),
                 'obstacle_stop_distance': LaunchConfiguration('obstacle_stop_distance'),
                 'front_angle_deg': LaunchConfiguration('front_angle_deg'),
