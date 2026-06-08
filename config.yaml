@@ -16,5 +16,5 @@
     stop_distance: 0.55
 
     # OCR
-    ocr_timeout_sec: 4.0
+    ocr_timeout_sec: 15.0
     ocr_interval_sec: 0.5
