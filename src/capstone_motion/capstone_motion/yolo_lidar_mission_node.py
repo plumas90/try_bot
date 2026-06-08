@@ -118,7 +118,7 @@ class YoloLidarMissionNode(Node):
         self.sequence = self.parse_sequence()
         self.target_index = 0
         self.state = 'INITIAL_FORWARD' if float(self.get_parameter('initial_forward_sec').value) > 0.0 else 'SEARCH_TARGET'
-        self.state_started_at = 0.0
+        self.state_started_at = time.time()
         self.initial_forward_started = False
         self.arrive_until = 0.0
         self.ocr_until = 0.0
@@ -972,6 +972,7 @@ class YoloLidarMissionNode(Node):
         self.reset_target_tracking()
         if self.target_index < len(self.sequence):
             self.state = 'SEARCH_TARGET'
+            self.state_started_at = time.time()
             self.publish_debug(f'NEXT TARGET: {self.current_target()}')
             return
 
@@ -1006,6 +1007,7 @@ class YoloLidarMissionNode(Node):
                 self.sequence.append(next_target)
 
             self.state = 'SEARCH_TARGET'
+            self.state_started_at = time.time()
             self.publish_debug(f'NEXT TARGET FROM OCR: {self.current_target()}')
             return
 
