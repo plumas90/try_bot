@@ -1,0 +1,17 @@
+# Frequently tuned parameters — edit here instead of the launch command.
+# CLI overrides still work: ros2 launch ... confidence_threshold:=0.5
+
+# Mission
+target_class: laptop
+
+# YOLO
+confidence_threshold: 0.40
+process_every_n_frames: 3
+
+# Movement
+linear_speed: 0.18
+stop_distance: 0.55
+
+# OCR
+ocr_timeout_sec: 4.0
+ocr_interval_sec: 0.5
