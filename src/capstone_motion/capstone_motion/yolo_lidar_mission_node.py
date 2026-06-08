@@ -763,7 +763,13 @@ class YoloLidarMissionNode(Node):
     def control_locked_target(self):
         target = self.active_target_name()
         if self.is_front_too_close():
-            self.publish_obstacle_avoidance(f'APPROACH_OBJECT_FRONT target={target}')
+            if self.target_locked:
+                # Locked on target and hit close distance = we're AT the target, start paper alignment
+                self.start_align_paper(reset_attempts=True)
+                self.publish_debug(f'OBJECT_REACHED_BY_PROXIMITY: {target}, front={self.front_text()}')
+                self.control_align_paper()
+            else:
+                self.publish_obstacle_avoidance(f'APPROACH_OBJECT_FRONT target={target}')
             return
         if self.is_object_front_reached():
             self.start_align_paper(reset_attempts=True)

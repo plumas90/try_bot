@@ -8,7 +8,7 @@
     target_class: laptop
 
     # YOLO
-    confidence_threshold: 0.40
+    confidence_threshold: 0.30
     process_every_n_frames: 3
 
     # Movement
