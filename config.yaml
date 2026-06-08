@@ -17,6 +17,7 @@
     obstacle_stop_distance: 0.35
     paper_center_deadband: 0.45
     paper_angular_gain: 0.12
+    paper_stop_area_ratio: 0.020
 
     # OCR
     ocr_timeout_sec: 15.0
