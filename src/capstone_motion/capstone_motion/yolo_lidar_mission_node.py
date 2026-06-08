@@ -32,7 +32,7 @@ class YoloLidarMissionNode(Node):
     def __init__(self):
         super().__init__('yolo_lidar_mission_node')
 
-        self.declare_parameter('model_path', 'models/yolov8l.pt')
+        self.declare_parameter('model_path', 'models/yolov8m.pt')
         self.declare_parameter('image_topic', '/image_raw')
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('odom_topic', '/odom')

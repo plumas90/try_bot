@@ -24,12 +24,12 @@ def generate_launch_description():
     return LaunchDescription([
         # --- Frequently changed at runtime (CLI override) ---
         DeclareLaunchArgument('target_class', default_value='laptop'),
-        DeclareLaunchArgument('model_path', default_value='models/yolov8l.pt'),
+        DeclareLaunchArgument('model_path', default_value='models/yolov8m.pt'),
         DeclareLaunchArgument('confidence_threshold', default_value='0.40'),
         DeclareLaunchArgument('process_every_n_frames', default_value='3'),
         DeclareLaunchArgument('linear_speed', default_value='0.18'),
         DeclareLaunchArgument('stop_distance', default_value='0.55'),
-        DeclareLaunchArgument('ocr_timeout_sec', default_value='4.0'),
+        DeclareLaunchArgument('ocr_timeout_sec', default_value='15.0'),
         DeclareLaunchArgument('ocr_interval_sec', default_value='0.5'),
         DeclareLaunchArgument('image_topic', default_value='/image_raw'),
         DeclareLaunchArgument('scan_topic', default_value='/scan'),
