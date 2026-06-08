@@ -653,7 +653,7 @@ class YoloLidarMissionNode(Node):
         search_timeout = float(self.get_parameter('search_timeout_sec').value)
         if search_timeout > 0 and (now - self.state_started_at) > search_timeout:
             self.get_logger().warn(f'SEARCH_TIMEOUT: {self.current_target()} not found after {search_timeout:.0f}s — returning home')
-            self.start_return_home()
+            self.start_return_home('search_timeout')
             return
         self.control_search()
 
