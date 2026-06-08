@@ -9,7 +9,7 @@
 
     # YOLO
     confidence_threshold: 0.30
-    process_every_n_frames: 3
+    process_every_n_frames: 5
 
     # Movement
     linear_speed: 0.18
@@ -21,4 +21,4 @@
 
     # OCR
     ocr_timeout_sec: 15.0
-    ocr_interval_sec: 0.5
+    ocr_interval_sec: 2.0
